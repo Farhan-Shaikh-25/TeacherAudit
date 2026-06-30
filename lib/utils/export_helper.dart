@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart'; // NEW IMPORT
+import 'package:url_launcher/url_launcher.dart';
 
 // Excel Packages
 import 'package:excel/excel.dart';
@@ -20,7 +20,7 @@ class ExportHelper {
   static final DateFormat _timeFormatter = DateFormat('hh:mm a');
 
   // ==========================================
-  // 1. EXCEL EXPORT
+  // 1. EXCEL EXPORT (UPDATED WITH PROGRAMME)
   // ==========================================
   static Future<void> exportToExcel(BuildContext context, List<TaskEntry> tasks) async {
     try {
@@ -28,14 +28,14 @@ class ExportHelper {
       var sheet = excel['Audit Report'];
       excel.setDefaultSheet('Audit Report');
 
-      // ... [Keep all your existing Excel Header and Row appending logic here] ...
-      // 1. Add Headers
+      // 1. Add Headers (Inserted Programme column)
       sheet.appendRow([
         TextCellValue('Date'),
         TextCellValue('Start Time'),
         TextCellValue('End Time'),
         TextCellValue('Module'),
         TextCellValue('Activity'),
+        TextCellValue('Programme'), // New Column
         TextCellValue('Class/Subject'),
         TextCellValue('Details'),
         TextCellValue('Hours Logged'),
@@ -43,9 +43,18 @@ class ExportHelper {
 
       // 2. Add Data Rows
       for (var task in tasks) {
-        final classInfo = task.mainModule == MainModule.academic && task.subCategory == 'Teaching'
-            ? '${task.className ?? ''} ${task.division ?? ''} - ${task.subject ?? ''}'
-            : '-';
+        final isAcademicTeaching = task.mainModule == MainModule.academic && task.subCategory == 'Teaching';
+
+        final programmeInfo = isAcademicTeaching ? (task.programme ?? '-') : '-';
+
+        // UPDATED: Appends an "(Extra Lecture)" flag if true
+        String classInfo = '-';
+        if (isAcademicTeaching) {
+          classInfo = '${task.className ?? ''} ${task.division ?? ''} - ${task.subject ?? ''}';
+          if (task.isExtraLecture) {
+            classInfo += ' (Extra Lecture)';
+          }
+        }
 
         sheet.appendRow([
           TextCellValue(_dateFormatter.format(task.startTime)),
@@ -53,7 +62,8 @@ class ExportHelper {
           TextCellValue(_timeFormatter.format(task.endTime)),
           TextCellValue(task.mainModule.displayName),
           TextCellValue(task.subCategory),
-          TextCellValue(classInfo),
+          TextCellValue(programmeInfo),
+          TextCellValue(classInfo), // Contains the extra lecture note now
           TextCellValue(task.title ?? task.detailedDescription ?? ''),
           DoubleCellValue(task.duration.inMinutes / 60.0),
         ]);
@@ -64,7 +74,6 @@ class ExportHelper {
 
       // 3. PLATFORM SPECIFIC SAVING LOGIC
       if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        // --- DESKTOP LOGIC ---
         final directory = await getDownloadsDirectory();
         final filePath = '${directory?.path}/Teacher_Audit_Report.xlsx';
 
@@ -78,13 +87,12 @@ class ExportHelper {
               content: const Text('Excel report saved to Downloads folder!'),
               action: SnackBarAction(
                 label: 'Open Folder',
-                onPressed: () => launchUrl(Uri.file(directory!.path)), // Opens Windows Explorer / Finder
+                onPressed: () => launchUrl(Uri.file(directory!.path)),
               ),
             ),
           );
         }
       } else {
-        // --- MOBILE LOGIC ---
         final directory = await getTemporaryDirectory();
         final filePath = '${directory.path}/Teacher_Audit_Report.xlsx';
 
@@ -98,23 +106,31 @@ class ExportHelper {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generating Excel: $e')));
     }
   }
+
   // ==========================================
-  // 2. PDF EXPORT
+  // 2. PDF EXPORT (UPDATED WITH PROGRAMME)
   // ==========================================
   static Future<void> exportToPdf(BuildContext context, List<TaskEntry> tasks) async {
     try {
       final pdf = pw.Document();
 
-      // ... [Keep all your existing PDF Table and Formatting logic here] ...
       final headers = ['Date', 'Time', 'Category', 'Details', 'Hrs'];
       final data = tasks.map((task) {
         final timeString = '${_timeFormatter.format(task.startTime)}\n${_timeFormatter.format(task.endTime)}';
         String details = task.subCategory;
+
         if (task.mainModule == MainModule.academic && task.subCategory == 'Teaching') {
-          details += '\n${task.className ?? ''} - ${task.subject ?? ''}';
+          details += '\nProg: ${task.programme ?? "-"}';
+          details += '\nClass: ${task.className ?? ''} ${task.division ?? ''} - ${task.subject ?? ''}';
+
+          // UPDATED: Inserts a stark notice if the entry is an extra duty
+          if (task.isExtraLecture) {
+            details += '\n[EXTRA LECTURE]';
+          }
         } else if (task.title != null) {
           details += '\n${task.title}';
         }
+
         return [
           _dateFormatter.format(task.startTime),
           timeString,
@@ -152,7 +168,6 @@ class ExportHelper {
 
       // PLATFORM SPECIFIC SAVING LOGIC
       if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        // --- DESKTOP LOGIC ---
         final directory = await getDownloadsDirectory();
         final filePath = '${directory?.path}/Teacher_Audit_Report.pdf';
 
@@ -166,13 +181,12 @@ class ExportHelper {
               content: const Text('PDF report saved to Downloads folder!'),
               action: SnackBarAction(
                 label: 'Open Folder',
-                onPressed: () => launchUrl(Uri.file(directory!.path)), // Opens Windows Explorer / Finder
+                onPressed: () => launchUrl(Uri.file(directory!.path)),
               ),
             ),
           );
         }
       } else {
-        // --- MOBILE LOGIC ---
         final directory = await getTemporaryDirectory();
         final filePath = '${directory.path}/Teacher_Audit_Report.pdf';
 
